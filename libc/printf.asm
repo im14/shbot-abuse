@@ -4,37 +4,50 @@
 %define	_bin_sh 1785370                  ; grep -Pabo /bin/sh libc.so.6
 %define _start 0x1de0
 
-; amd64 abi:
+; parameters
 ;   rdi, rsi, rdx, rcx, r8, r9, RTL stack
+; syscall clobbers
+;   rcx, r11, rax (return)
+; caller-saved
+;   rax, (rdi, rsi, rdx, rcx, r8, r9), r10, r11
+; callee-saved
+;   rsp, rbx, rbp, r12, r13, r14, r15
 
 BITS 64
 ORG _start
 ; for some reason nasm calculates $ from 0 even if i put sections
 ;  probably gotta use some different directive for bin format
 main:
-	push	rsi		; argv
-	push	rdx		; envp
-
   ; get base_addr of libc into rbx
-  ; one way
 fromhere equ __libc_start_main-_start-$
-  mov rbx,[rel $+fromhere]
-  ; or another
-  ;call .get_GOT
-.get_GOT:
-  ;pop rbx
-  ;mov rbx,[rbx+__libc_start_main-.get_GOT]
+  mov rbp,[rel $+fromhere]
 
-  sub rbx,__libc_start_main_offset
+	mov	r12, rdi   ; argc
+	mov	r13, rsi   ; argv
+	mov r14, 0     ; i
+loop1:
+	cmp	r14, r12   ; while i < argc
+	jnl	.end
 
-	pop	rdx		; envp
-	pop	rsi		; argv
-  mov rdx, [rdx]
-  mov rsi, [rsi]
-	lea	rdi, [rel fmt]
-  lea rax, [rbx+printf]
+  mov rdx, r13[r14*8]    ; rdx=argv[i]
+
+	lea	rdi, [rel str1]    ; printf(fmt1, i, argv[i])
+  mov rsi, r14
+  lea rax, [rbp-__libc_start_main_offset+printf]
+  call rax
+	add	r14, 1
+  jmp loop1
+
+.end:
+	lea	rdi, [rel str2]
+  lea rax, [rbp-__libc_start_main_offset+puts]
   call rax
 
+  ; exit(42)
+  mov edi,42
+  lea rax, [rbp-__libc_start_main_offset+exit]
+  call rax
   ret
 
-fmt: db '%s %s', 10, 0
+str1: db '%d:%s '
+str2: db 0
